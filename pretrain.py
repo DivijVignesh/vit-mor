@@ -21,11 +21,14 @@ from model.util import load_model_from_config
 from model.sharing_strategy import SHARING_STRATEGY
 from model.relaxation.util import relax_weight_sharing
 from util.config import preprocess_config
-from util.tokenizer import load_tokenizer_from_config 
+# from util.tokenizer import load_tokenizer_from_config 
 from util.trainer_pt import MoRTrainer
 from util.callback import FixedStoppingCallback, EvalCallback, PeftSaveCallback, DatasetSaveCallback, ScalingLawsSaveCallback
 from util.misc import print_trainable_parameters, get_latest_checkpoint_path, print_rank_zero, get_launcher_type; print_rank_zero()
 
+#Vision Transformer -MOR imports
+from vision_dataset.load_dataset import load_vision_dataset_from_config
+from util.vision_trainer import MoRVisionTrainer
 
 @hydra.main(config_path="conf/pretrain", config_name="yymmdd_pretrain")
 def main(cfg: DictConfig):
@@ -53,28 +56,64 @@ def main(cfg: DictConfig):
         os.environ["WANDB LOG MODEL"] = "false"
     
     launcher_type = get_launcher_type()
-    
-    print ("Loading tokenizers...")
-    tokenizer = load_tokenizer_from_config(cfg)
 
-    print ("Loading dataset...")
-    train_dataset = load_dataset_from_config(cfg, tokenizer)
-    if cfg.resume_from_checkpoint:
+    print("Loading tokenizers...")
+    if cfg.model == "vit_mor":
+        tokenizer = None  # Vision doesn't need tokenizer
+    else:
+        tokenizer = load_tokenizer_from_config(cfg)
+    
+    print("Loading dataset...")
+    if cfg.model == "vit_mor":
+        train_dataset, val_dataset = load_vision_dataset_from_config(cfg)
+    else:
+        train_dataset = load_dataset_from_config(cfg, tokenizer)
+        val_dataset = None
+        
+    # Handle checkpoint resuming for vision
+    if cfg.resume_from_checkpoint and cfg.model != "vit_mor":
+        # Only for text models
         latest_checkpoint = get_latest_checkpoint_path(cfg, resume_step=cfg.resume_step if ("resume_step" in cfg and cfg.resume_step is not None) else None)
         train_dataset.load_state_dict(
             torch.load(os.path.join(str(latest_checkpoint), "dataset.pt"))
         )
-
-    print ("Loading models...")
+    
+    print("Loading models...")
     model = load_model_from_config(cfg)
+
     
-    if cfg.recursive.get("enable"):        
-        # KV cache sharing strategy
+    # print ("Loading tokenizers...")
+    # tokenizer = load_tokenizer_from_config(cfg)
+
+    # print ("Loading dataset...")
+    # train_dataset = load_dataset_from_config(cfg, tokenizer)
+    # if cfg.resume_from_checkpoint:
+    #     latest_checkpoint = get_latest_checkpoint_path(cfg, resume_step=cfg.resume_step if ("resume_step" in cfg and cfg.resume_step is not None) else None)
+    #     train_dataset.load_state_dict(
+    #         torch.load(os.path.join(str(latest_checkpoint), "dataset.pt"))
+    #     )
+
+    # print ("Loading models...")
+    # model = load_model_from_config(cfg)
+    
+    # if cfg.recursive.get("enable"):        
+    #     # KV cache sharing strategy
+    #     model, lora_init_dict = SHARING_STRATEGY[cfg.model](cfg, model)
+    
+    # if "kv_sharing" in cfg and cfg.kv_sharing.get("enable"):
+    #     model.set_kv_sharing_config(cfg)
+
+    # Only apply text‐based sharing strategies to models that support them
+    if cfg.recursive.get("enable") and cfg.model in SHARING_STRATEGY:
         model, lora_init_dict = SHARING_STRATEGY[cfg.model](cfg, model)
-    
-    if "kv_sharing" in cfg and cfg.kv_sharing.get("enable"):
+    else:
+        # No text‐sharing for vit_mor
+        lora_init_dict = None
+
+    # KV‐sharing is also text‐only
+    if "kv_sharing" in cfg and cfg.kv_sharing.get("enable") and cfg.model in SHARING_STRATEGY:
         model.set_kv_sharing_config(cfg)
-        
+
     if cfg.get("relaxation") and cfg.relaxation.get("enable"):
         model = relax_weight_sharing(cfg, model, lora_init_dict=lora_init_dict)
         
@@ -141,11 +180,37 @@ def main(cfg: DictConfig):
         callbacks.append(DatasetSaveCallback(cfg.save_steps, fixed_save_steps=fixed_save_steps))
     if fixed_save_steps is not None:
         callbacks.append(ScalingLawsSaveCallback(fixed_save_steps,))
-        
-    if "mor" in cfg and cfg.mor.get("enable"):
-        trainer = MoRTrainer(model=model, args=train_args, train_dataset=train_dataset, callbacks=callbacks, cfg=cfg,)
+
+    if cfg.model == "vit_mor":
+        trainer = MoRVisionTrainer(
+            model=model, 
+            args=train_args, 
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            callbacks=callbacks, 
+            cfg=cfg,
+        )
+    elif "mor" in cfg and cfg.mor.get("enable"):
+        trainer = MoRTrainer(
+            model=model, 
+            args=train_args, 
+            train_dataset=train_dataset, 
+            callbacks=callbacks, 
+            cfg=cfg,
+        )
     else:
-        trainer = Trainer(model=model, args=train_args, train_dataset=train_dataset, callbacks=callbacks,)
+        trainer = Trainer(
+            model=model, 
+            args=train_args, 
+            train_dataset=train_dataset, 
+            callbacks=callbacks,
+        )
+
+        
+    # if "mor" in cfg and cfg.mor.get("enable"):
+    #     trainer = MoRTrainer(model=model, args=train_args, train_dataset=train_dataset, callbacks=callbacks, cfg=cfg,)
+    # else:
+    #     trainer = Trainer(model=model, args=train_args, train_dataset=train_dataset, callbacks=callbacks,)
     
     train_result = trainer.train(
         resume_from_checkpoint=cfg.resume_from_checkpoint

@@ -42,6 +42,27 @@ def get_torch_dtype(cfg: DictConfig):
 
 
 def load_model_from_config(cfg: DictConfig):
+
+    if cfg.model == "vit_mor":
+        from model.mor_model.modeling_vit import ViTConfig, MoRViTForImageClassification
+        
+        config = ViTConfig(
+            image_size=cfg.get("image_size", 224),
+            patch_size=cfg.get("patch_size", 16),
+            num_channels=3,
+            num_labels=cfg.get("num_labels", 1000),
+            hidden_size=cfg.get("hidden_size", 768),
+            num_hidden_layers=cfg.get("num_hidden_layers", 12),
+            num_attention_heads=cfg.get("num_attention_heads", 12),
+            intermediate_size=cfg.get("intermediate_size", 3072),
+            hidden_act=cfg.get("hidden_act", "gelu"),
+            initializer_range=cfg.get("initializer_range", 0.02),
+            layer_norm_eps=cfg.get("layer_norm_eps", 1e-12),
+        )
+        
+        model = MoRViTForImageClassification(config)
+        return model
+    
     if "mor" in cfg and cfg.mor.enable:
         model_cls = MOR_MODEL_CLS[cfg.model]
     elif cfg.recursive.enable or ("kv_sharing" in cfg and cfg.kv_sharing.enable):

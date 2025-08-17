@@ -6,7 +6,7 @@ wandb_entity: efficient-ai-projects
 wandb_project: mixture-of-recursions
 wandb_run_name: null
 output_dir: null
-wandb_run_id: null  # run `python util/generate_wandb_run_id.py` to generate a new id
+wandb_run_id: WuqP1TpX  # run `python util/generate_wandb_run_id.py` to generate a new id
 
 tensorboard: false
 tensorboard_dir: null

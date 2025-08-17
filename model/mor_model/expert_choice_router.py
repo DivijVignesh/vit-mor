@@ -15,12 +15,40 @@ from model.mor_model.util import ROUTER_TYPES, MoRLayerOutputWithPast
 from model.base_model.modeling_llama import apply_rotary_pos_emb, eager_attention_forward, LlamaAttention
 from util.misc import get_torch_dtype
 
+from model.mor_model.modeling_vit import ViTAttention
+
 logger = logging.get_logger(__name__)
 
 
 class MoRLlamaAttention(LlamaAttention):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
+    # def forward(
+    #     self,
+    #     hidden_states: torch.Tensor,
+    #     position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+    #     attention_mask: Optional[torch.Tensor],
+    #     past_key_value: Optional[Cache] = None,
+    #     cache_position: Optional[torch.LongTensor] = None,
+    #     **kwargs: Unpack[FlashAttentionKwargs],
+    # ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    #     input_shape = hidden_states.shape[:-1]
+    #     hidden_shape = (*input_shape, -1, self.head_dim)
+        
+    #     query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)            
+    #     key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+    #     value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
+    #     cos, sin = position_embeddings
+    #     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+    #     if past_key_value is not None:
+    #         # sin and cos are specific to RoPE models; cache_position needed for the static cache
+    #         cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+    #         # This class is for hybrid KV sharing that leverages shared caches 
+    #         # for inactive positions while updating active ones through actual computation
+    #         if "selected_tokens" in kwargs:
+    #             cache_kwargs["selected_tokens"] = kwargs["selected_tokens"]
+    #         key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -33,18 +61,20 @@ class MoRLlamaAttention(LlamaAttention):
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
         
-        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)            
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2) 
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
-        cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        # Only apply RoPE if position_embeddings is not None (text models)
+        if position_embeddings is not None:
+            cos, sin = position_embeddings
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:
-            # sin and cos are specific to RoPE models; cache_position needed for the static cache
-            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            # This class is for hybrid KV sharing that leverages shared caches 
-            # for inactive positions while updating active ones through actual computation
+            cache_kwargs = {"cache_position": cache_position}
+            if position_embeddings is not None:
+                cos, sin = position_embeddings
+                cache_kwargs.update({"sin": sin, "cos": cos})
             if "selected_tokens" in kwargs:
                 cache_kwargs["selected_tokens"] = kwargs["selected_tokens"]
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
