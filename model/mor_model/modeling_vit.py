@@ -278,8 +278,9 @@ class MoRViTModel(nn.Module):
         ])
         self.norm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.gradient_checkpointing = False
+        # Use single-hook checkpoint to avoid double-marking
         from torch.utils.checkpoint import checkpoint
-        self._gradient_checkpointing_func = checkpoint
+        self._gradient_checkpointing_func = lambda func, *args: checkpoint(func, *args, use_reentrant=False)
         
     def forward(
         self,
