@@ -1,0 +1,61 @@
+{
+  "os": "Linux-5.4.0-144-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.12.3",
+  "startedAt": "2025-08-21T14:06:29.389502Z",
+  "args": [
+    "--config-name",
+    "imagenet_vit_mor"
+  ],
+  "program": "/dgxb_home/se24maid020/vit-mor/mixture_of_recursions/pretrain.py",
+  "codePath": "pretrain.py",
+  "git": {
+    "remote": "https://github.com/DivijVignesh/vit-mor.git",
+    "commit": "e365cf0c4ad8a23197d552faa456d837048a0045"
+  },
+  "email": "divijvignesh12@gmail.com",
+  "root": "/dgxb_home/se24maid020/vit-mor/mixture_of_recursions/outputs/2025-08-21/19-36-14",
+  "host": "dgxb",
+  "executable": "/usr/bin/python3",
+  "cpu_count": 128,
+  "cpu_count_logical": 256,
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "gpu_count": 5,
+  "disk": {
+    "/": {
+      "total": "15240248623104",
+      "used": "10581046386688"
+    }
+  },
+  "memory": {
+    "total": "1082000646144"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "architecture": "Ampere",
+      "uuid": "GPU-2412777a-5ba3-0265-76ea-6a7b051248d7"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "architecture": "Ampere",
+      "uuid": "GPU-c6de2e38-906f-b162-f7d6-a479b2d3a706"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "architecture": "Ampere",
+      "uuid": "GPU-04f52cfb-c026-5f47-2b5b-b3d67cfc11b0"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "architecture": "Ampere",
+      "uuid": "GPU-ed5f60b1-e11a-4182-9933-4e6ff8efc9f5"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "architecture": "Ampere",
+      "uuid": "GPU-45690eb9-a67d-49d9-2846-9ad9786d5ded"
+    }
+  ],
+  "cudaVersion": "12.6",
+  "writerId": "tkybhcp0gn80lars130d658u8jvmnogp"
+}

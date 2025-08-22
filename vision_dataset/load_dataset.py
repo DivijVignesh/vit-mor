@@ -7,8 +7,11 @@ from torchvision import transforms
 from PIL import Image
 from datasets import load_dataset, interleave_datasets
 from huggingface_hub import login
+import torchvision.transforms.v2 as transforms_v2
+from torch.utils.data import DataLoader
+from concurrent.futures import ThreadPoolExecutor
 
-login("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")  # replace with your actual token
+login("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")  # replace with your actual token
 
 
 def get_imagenet_transforms(image_size=224, is_training=True):
@@ -30,55 +33,40 @@ def get_imagenet_transforms(image_size=224, is_training=True):
         ])
 
 
-class ImagenetWDSIterableDataset(IterableDataset):
-    """
-    Streaming IterableDataset for timm/imagenet-1k-wds (parquet shards).
-    Each record has 'image__value' (bytes) and 'label' (int).
-    """
-    def __init__(self, split="train", image_size=224):
+class OptimizedImagenetWDS(IterableDataset):
+    def __init__(self, split="train", image_size=224, num_workers=4):
         super().__init__()
         self.split = split
-        self.image_size = image_size
-        self.transform_train = get_imagenet_transforms(image_size, is_training=True)
-        self.transform_val   = get_imagenet_transforms(image_size, is_training=False)
-
-        # Load the parquet-based WebDataset, streaming mode
+        # Use torchvision v2 transforms (faster)
+        self.transform = transforms_v2.Compose([
+            transforms_v2.ToImage(),
+            transforms_v2.ToDtype(torch.uint8, scale=True),
+            transforms_v2.RandomResizedCrop(image_size) if split == "train" 
+                else transforms_v2.Resize((int(image_size * 1.14), int(image_size * 1.14))),
+            transforms_v2.CenterCrop(image_size) if split == "validation" else transforms_v2.Identity(),
+            transforms_v2.RandomHorizontalFlip() if split == "train" else transforms_v2.Identity(),
+            transforms_v2.ToDtype(torch.float32, scale=True),
+            transforms_v2.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        
+        # Enable faster data loading
         self.dataset = load_dataset(
             "timm/imagenet-1k-wds",
             split=split,
             streaming=True,
-            # use_auth_token=True,       # if needed
-            cache_dir="hf_cache",      # adjust if desired
-        )
-
+            cache_dir="hf_cache",
+        ).with_format("torch")  # Use torch format directly
+    
     def __iter__(self):
         for example in self.dataset:
-            # Extract raw image object (could be PIL or bytes or array)
-            img_obj = example.get("jpg", None) or example.get("image")
-            
-            # Convert bytes->PIL if needed
-            if isinstance(img_obj, (bytes, bytearray)):
-                img = Image.open(io.BytesIO(img_obj))
-            elif isinstance(img_obj, Image.Image):
-                img = img_obj
-            else:
-                # e.g. NumPy array
-                img = Image.fromarray(img_obj)
-            
-            # Force RGB mode
-            img = img.convert("RGB")
-            
-            # Now safe to apply ViT transforms
-            if self.split == "train":
-                tensor = self.transform_train(img)
-            else:
-                tensor = self.transform_val(img)
-            
-            label = example["json"]["label"]
+            # Direct tensor conversion - much faster
+            img_tensor = example["jpg"]  # Already a tensor if using with_format("torch")
+            tensor = self.transform(img_tensor)
             yield {
                 "pixel_values": tensor,
-                "labels": torch.tensor(label, dtype=torch.long),
+                "labels": torch.tensor(example["json"]["label"], dtype=torch.long),
             }
+
 
 
 def load_vision_dataset_from_config(cfg):
@@ -87,8 +75,8 @@ def load_vision_dataset_from_config(cfg):
       train_dataset: IterableDataset for training
       val_dataset: IterableDataset for validation
     """
-    train_ds = ImagenetWDSIterableDataset(split="train", image_size=cfg.image_size)
-    val_ds   = ImagenetWDSIterableDataset(split="validation", image_size=cfg.image_size)
+    train_ds = OptimizedImagenetWDS(split="train", image_size=cfg.image_size)
+    val_ds   = OptimizedImagenetWDS(split="validation", image_size=cfg.image_size)
     return train_ds, val_ds
 
 

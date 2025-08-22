@@ -164,52 +164,77 @@ class ViTAttention(nn.Module):
         )
         
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        **kwargs: Unpack[FlashAttentionKwargs],
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        
-        input_shape = hidden_states.shape[:-1]
-        hidden_shape = (*input_shape, -1, self.head_dim)
-        
-        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2) 
+    self,
+    hidden_states: torch.Tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    position_ids: Optional[torch.LongTensor] = None,
+    past_key_value: Optional[Cache] = None,
+    cache_position: Optional[torch.LongTensor] = None,
+    position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    **kwargs: Unpack[FlashAttentionKwargs],
+) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+
+        batch_size, seq_len, _ = hidden_states.size()
+        hidden_shape = (batch_size, seq_len, self.config.num_attention_heads, -1)
+        head_dim = hidden_shape[-1]
+
+        query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)  # (B, Heads, Seq_len, Head_dim)
         key_states = self.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
         value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-        
-        # No RoPE for ViT
-        
+
+        # ViT uses bidirectional attention, so causal = False
+        causal_flag = False
+
         if past_key_value is not None:
-            # For MOR caching
             cache_kwargs = {"cache_position": cache_position}
             if "selected_tokens" in kwargs:
                 cache_kwargs["selected_tokens"] = kwargs["selected_tokens"]
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-        
-        # Use eager attention for simplicity
-        from model.base_model.modeling_llama import eager_attention_forward
-        
-        attn_output, attn_weights = eager_attention_forward(
-            self,
-            query_states,
-            key_states,
-            value_states,
-            attention_mask,
-            dropout=0.0 if not self.training else self.attention_dropout,
-            scaling=self.scaling,
-            **kwargs,
-        )
-        
-        attn_output = attn_output.reshape(*input_shape, -1).contiguous()
-        attn_output = self.o_proj(attn_output)
-        return attn_output, attn_weights
 
+        if self.config._attn_implementation == "flash_attention_2":
+            try:
+                from flash_attn.flash_attn_interface import flash_attn_func
+
+                attn_output = flash_attn_func(
+                    query_states.contiguous(),
+                    key_states.contiguous(),
+                    value_states.contiguous(),
+                    dropout_p=self.attention_dropout if self.training else 0.0,
+                    softmax_scale=self.scaling,
+                    causal=causal_flag,
+                )
+            except ImportError:
+                # Fallback to eager attention if flash_attn not installed
+                from model.base_model.modeling_llama import eager_attention_forward
+
+                attn_output, _ = eager_attention_forward(
+                    self,
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask,
+                    dropout=0.0 if not self.training else self.attention_dropout,
+                    scaling=self.scaling,
+                    **kwargs,
+                )
+        else:
+            # Default fallback to eager attention
+            from model.base_model.modeling_llama import eager_attention_forward
+
+            attn_output, _ = eager_attention_forward(
+                self,
+                query_states,
+                key_states,
+                value_states,
+                attention_mask,
+                dropout=0.0 if not self.training else self.attention_dropout,
+                scaling=self.scaling,
+                **kwargs,
+            )
+
+        attn_output = attn_output.transpose(1, 2).reshape(batch_size, seq_len, -1).contiguous()
+        attn_output = self.o_proj(attn_output)
+        return attn_output, None
 
 class ViTDecoderLayer(nn.Module):
     def __init__(self, config, layer_idx: int):
@@ -446,6 +471,8 @@ class MoRViTModel(nn.Module):
 
 
 class MoRViTForImageClassification(nn.Module):
+
+    _keys_to_ignore_on_save = None
     def __init__(self, config):
         super().__init__()
         self.config = config

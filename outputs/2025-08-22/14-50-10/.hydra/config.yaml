@@ -1,0 +1,122 @@
+name: imagenet_vit_mor
+wandb: true
+wandb_mode: online
+wandb_entity: divijvignesh1223
+wandb_project: vit-mor-experiments
+wandb_run_name: null
+output_dir: vit_mor_imagenet
+wandb_run_id: 66GYUq8K
+tensorboard: false
+tensorboard_dir: null
+resume_from_checkpoint: false
+resume_step: null
+model: vit_mor
+dataset: imagenet1k
+image_size: 224
+patch_size: 16
+num_labels: 1000
+hidden_size: 768
+num_hidden_layers: 7
+num_attention_heads: 7
+intermediate_size: 896
+hidden_act: gelu
+initializer_range: 0.02
+layer_norm_eps: 1.0e-12
+total_batch_size: 1024
+per_device_train_batch_size: 64
+gradient_accumulation_steps: null
+batch_size_rampup_steps: null
+max_length: null
+add_bos_token: false
+global_shuffling: false
+local_shuffling: false
+tokenizer: null
+pin_memory: true
+persistent_workers: true
+model_name_or_path: null
+model_config: null
+attn_implementation: flash_attention_2
+use_pretrained_weights: false
+recursive:
+  enable: true
+  base_depth: null
+  num_recursion: 3
+  sharing: middle_cycle
+  ln_share: true
+  initialization: stepwise
+kv_sharing:
+  enable: false
+  base_depth: null
+  num_recursion: null
+  sharing: null
+  update_cache: false
+relaxation:
+  enable: false
+  skip_first_loop: false
+  method: lora
+  lora:
+    r: 16
+    alpha: 32
+    dropout: 0.1
+    target_modules:
+    - q_proj
+    - v_proj
+    rank_pattern: null
+    alpha_pattern: 2.0
+    svd_init: false
+  prompt:
+    len: 16
+mor:
+  enable: true
+  type: expert
+  capacity: 0.8,0.5,0.3
+  rand_router: false
+  router_type: linear
+  z_loss: true
+  z_coeff: 1.0e-05
+  temp: 1.0
+  expert:
+    cap_warmup_step: 500
+    router_func: sigmoid
+    alpha: 0.2
+    sampling: aux_loss
+    include_first: true
+    coeff: 0.0005
+    gating: weighted
+  token:
+    bal_warmup_step: 0
+    router_func: softmax
+    alpha: 1.0
+    balancing: loss
+    coeff: 0.1
+    u: 0.001
+    gating: weighted
+lr_scheduler_type: warmup_stable_decay
+lr_scheduler_kwargs:
+  num_decay_steps: 10000
+  decay_type: cosine
+learning_rate: 0.001
+adam_beta1: 0.9
+adam_beta2: 0.999
+weight_decay: 0.05
+precision: bf16
+max_grad_norm: 1.0
+num_train_steps: 100000
+stop_steps: 100000
+num_warmup_steps: 2500
+save_interval: 0.1
+save_steps: null
+fixed_save_steps: null
+save_total_limit: 3
+logging_steps: 100
+dataloader_num_workers: 8
+gradient_checkpointing: false
+torch_empty_cache_steps: 500
+deepspeed: ds_configs/stage2.config
+evaluation:
+  enable: false
+  eval_steps: 2000
+  batch_size: 64
+  tasks: null
+  device: null
+  num_fewshot: null

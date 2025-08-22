@@ -104,6 +104,7 @@ class MoRLlamaAttention(LlamaAttention):
         attn_output = self.o_proj(attn_output)
         return attn_output, attn_weights
     
+
     
 class MoRLlamaDecoderLayer(nn.Module):
     """The Mixtures of Depth Block that dynamically which tokens to process in a block.
@@ -222,6 +223,12 @@ class MoRLlamaDecoderLayer(nn.Module):
             targets = torch.zeros_like(router_probs, dtype=router_probs.dtype)
             src = torch.ones_like(selected_tokens, dtype=targets.dtype)
             targets.scatter_(1, selected_tokens, src)
+
+            if self.training and not self.cfg.mor.rand_router:
+                # Clip router gradients separately
+                router_params = [p for n, p in self.named_parameters() if 'mor_router' in n]
+                if router_params:
+                    torch.nn.utils.clip_grad_norm_(router_params, max_norm=0.5)
             
             if self.sampling == "aux_router":
                 logits = self.mlp_router(x.clone().detach())

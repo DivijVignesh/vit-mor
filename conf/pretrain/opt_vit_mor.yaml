@@ -1,0 +1,98 @@
+name: imagenet_vit_mor_paper_aligned
+
+wandb: true
+wandb_mode: online
+wandb_entity: divijvignesh1223
+wandb_project: vit-mor-experiments
+wandb_run_name: null
+output_dir: vit_mor_imagenet
+wandb_run_id: 1JBqef7i # run `python util/generate_wandb_run_id.py` to generate a new id
+
+# Model Architecture - Align with Paper's MoR-B/16
+model: vit_mor
+dataset: imagenet1k-wds
+hidden_size: 384
+num_hidden_layers: 8
+num_attention_heads: 6
+intermediate_size: 1536
+image_size: 224
+patch_size: 16
+num_labels: 1000
+
+tensorboard: false
+tensorboard_dir: null
+tokenizer: null
+
+model_name_or_path: "vit-mor-Paper"
+model_config: null
+attn_implementation: flash_attention_2
+use_pretrained_weights: false
+
+resume_from_checkpoint: false
+resume_step: null
+
+# MoR Configuration - Critical Paper Alignment
+mor:
+  enable: true
+  type: expert
+  capacity: "0.7,0.2,0.1"    # Paper uses hierarchical capacity
+  rand_router: false
+  router_type: linear        # Paper uses lightweight linear router
+  z_loss: false              # Paper doesn't emphasize z-loss
+  z_coeff: 1e-6             # Minimal if enabled
+  temp: 1.0                 # Paper default
+  expert:
+    cap_warmup_step: 0      # Paper: no extended warmup
+    router_func: sigmoid    # Paper standard
+    alpha: 0.1              # Paper routing strength
+    sampling: aux_loss      # Paper approach
+    include_first: true     
+    coeff: 0.001            # Paper auxiliary loss weight
+    gating: weighted
+
+# Recursive Configuration - Paper Aligned
+recursive:
+  enable: true
+  num_recursion: 3          # Paper uses 3 recursions
+  sharing: middle_cycle     # Paper parameter sharing
+  ln_share: true
+  initialization: stepwise
+
+# Training Schedule - Paper's 200 Epochs Equivalent
+num_train_steps: 25000     # ~200 epochs for ImageNet-1K
+stop_steps: 25000
+num_warmup_steps: 2500     # 10% warmup (paper standard)
+learning_rate: 1e-3        # Paper uses 1e-3 with Adam
+lr_scheduler_type: warmup_stable_decay
+lr_scheduler_kwargs:
+  num_decay_steps: 15000
+  decay_type: cosine
+
+# Optimizer - Paper Configuration
+adam_beta1: 0.9            # Paper default
+adam_beta2: 0.999          # Paper uses 0.999 not 0.95
+weight_decay: 0.05         # Paper standard ViT weight decay
+max_grad_norm: 1.0         # Standard clipping
+
+# Batch Configuration - Paper Equivalent
+total_batch_size: 1024     # Paper likely uses large batches
+per_device_train_batch_size: 64
+gradient_accumulation_steps: null  # 1024/(64*2) = 8
+
+# Data & Augmentation - Paper Standard
+precision: bf16
+dataloader_num_workers: 8
+gradient_checkpointing: true
+
+# Disable Complex Features Initially
+kv_sharing:
+  enable: false
+relaxation:
+  enable: false
+evaluation:
+  enable: false
+
+# Logging
+logging_steps: 100
+save_steps: 5000
+save_total_limit: 3

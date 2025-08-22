@@ -80,7 +80,6 @@ def main(cfg: DictConfig):
     
     print("Loading models...")
     model = load_model_from_config(cfg)
-
     
     # print ("Loading tokenizers...")
     # tokenizer = load_tokenizer_from_config(cfg)
@@ -153,7 +152,7 @@ def main(cfg: DictConfig):
         logging_steps=cfg.logging_steps,
         save_steps=cfg.save_steps,
         save_total_limit=cfg.save_total_limit,
-        save_safetensors=False if launcher_type == "accelerate" else True,
+        save_safetensors=True if launcher_type == "accelerate" else False,
         gradient_accumulation_steps=cfg.gradient_accumulation_steps,
         gradient_checkpointing=cfg.gradient_checkpointing,
         max_grad_norm=cfg.max_grad_norm,
@@ -180,7 +179,6 @@ def main(cfg: DictConfig):
         callbacks.append(DatasetSaveCallback(cfg.save_steps, fixed_save_steps=fixed_save_steps))
     if fixed_save_steps is not None:
         callbacks.append(ScalingLawsSaveCallback(fixed_save_steps,))
-
     if cfg.model == "vit_mor":
         trainer = MoRVisionTrainer(
             model=model, 
@@ -190,6 +188,7 @@ def main(cfg: DictConfig):
             callbacks=callbacks, 
             cfg=cfg,
         )
+        model = torch.compile(model, mode="default", dynamic=False)
     elif "mor" in cfg and cfg.mor.get("enable"):
         trainer = MoRTrainer(
             model=model, 

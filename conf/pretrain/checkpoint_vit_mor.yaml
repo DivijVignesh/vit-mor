@@ -1,0 +1,135 @@
+name: imagenet_vit_mor_resume_stable
+
+wandb: true
+wandb_mode: online
+wandb_entity: divijvignesh1223
+wandb_project: vit-mor-experiments
+wandb_run_name: "resume_stable_training"
+output_dir: vit_mor_imagenet
+wandb_run_id: 77HYRz9L  # Generate new ID
+
+tensorboard: false
+tensorboard_dir: null
+
+# CRITICAL: Resume from checkpoint
+resume_from_checkpoint: false
+resume_step: null  # Will pick up latest checkpoint
+
+# Vision-specific settings (keep same architecture)
+model: vit_mor
+dataset: imagenet1k
+image_size: 224
+patch_size: 16
+num_labels: 1000
+hidden_size: 768
+num_hidden_layers: 7
+num_attention_heads: 7
+intermediate_size: 896
+hidden_act: gelu
+initializer_range: 0.02
+layer_norm_eps: 1e-12
+
+# In your imagenet_vit_mor_resume_stable.yaml
+save_safetensors: true  # Make sure this is enabled
+
+# Also add these safety configurations
+checkpoint_format: "safetensors"  # Force safetensors format
+torch_load_weights_only: false    # Disable torch.load restrictions
+
+# FIXED: More conservative batch size for stability
+total_batch_size: 1024
+per_device_train_batch_size: 32   # REDUCED back to 32 for stability
+gradient_accumulation_steps: null    # EXPLICIT calculation: 512/(32*2) = 8
+batch_size_rampup_steps: null     # Disable for resume training
+max_length: null
+add_bos_token: false
+global_shuffling: false
+local_shuffling: false
+tokenizer: null
+
+model_name_or_path: "vit-mor-custom"
+model_config: null
+attn_implementation: flash_attention_2
+use_pretrained_weights: false
+
+# MoR Configuration - CRITICAL FIXES
+recursive:
+  enable: true
+  base_depth: null
+  num_recursion: 3
+  sharing: middle_cycle
+  ln_share: true
+  initialization: stepwise
+
+kv_sharing:
+  enable: false
+
+relaxation:
+  enable: false
+
+# CRITICAL: Stabilized MoR routing
+mor:
+  enable: true
+  type: expert
+  capacity: "0.6,0.3,0.1"          # BALANCED: More even distribution
+  rand_router: false
+  router_type: linear              # SIMPLIFIED: Back to linear for stability
+  z_loss: true
+  z_coeff: 0.001                   # MODERATE: Not too aggressive
+  temp: 1.5                        # MODERATE: Balanced temperature
+  expert:
+    cap_warmup_step: 0             # NO WARMUP: Already trained
+    router_func: sigmoid
+    alpha: 0.08                    # REDUCED: Gentler routing decisions
+    sampling: aux_loss
+    include_first: true
+    coeff: 0.005                   # REDUCED: Less aggressive sampling loss
+    gating: weighted
+
+# CRITICAL: Reduced learning rates for fine-tuning
+lr_scheduler:
+  type: cosine_with_hard_restarts  # or cosine_with_restarts depending on naming
+  params:
+    num_warmup_steps: 2500
+    num_training_steps: 100000
+
+
+learning_rate: 3e-5                # MUCH REDUCED: From 1e-4 to 3e-5 for fine-tuning
+adam_beta1: 0.9
+adam_beta2: 0.999                  # CHANGED: Back to standard value
+weight_decay: 0.005                # FURTHER REDUCED: Less aggressive regularization
+precision: bf16
+max_grad_norm: 1.0                 # INCREASED: Allow slightly higher gradients
+
+# Training schedule for resume
+num_train_steps: 150000            # EXTENDED: More steps from checkpoint
+stop_steps: 150000
+num_warmup_steps: 1000             # MINIMAL: Already warmed up
+save_steps: 1000                   # More frequent saves
+logging_steps: 25                  # Frequent monitoring
+save_interval: 0.1
+fixed_save_steps: null
+save_total_limit: 10               # Keep more checkpoints
+dataloader_num_workers: 4          # CONSERVATIVE: Reduce data loading overhead
+gradient_checkpointing: false      # DISABLED: You have enough memory, avoid overhead
+deepspeed: ds_configs/stage2.config  # Use specialized config
+
+# DISABLED: Keep evaluation off for faster training
+evaluation:
+  enable: false
+
+# ADDED: Specialized configurations for resume training
+resume_training:
+  reset_lr_scheduler: false        # Keep current schedule state
+  reset_optimizer: false          # Keep momentum/adam states
+  reduce_on_plateau: true         # Enable plateau detection
+  patience: 5000                   # Steps to wait before LR reduction
+  factor: 0.5                      # LR reduction factor
+  min_lr: 1e-6                     # Minimum learning rate
+
+# ADDED: Router stabilization
+router_stabilization:
+  enable: true
+  gradient_penalty: 0.01           # Penalize large router gradients
+  entropy_regularization: 0.001    # Encourage diverse routing
+  load_balance_loss: 0.01          # Balance expert utilization

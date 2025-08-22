@@ -6,7 +6,7 @@ wandb_entity: divijvignesh1223
 wandb_project: vit-mor-experiments
 wandb_run_name: null
 output_dir: vit_mor_imagenet
-wandb_run_id: WuqP1TpX # run `python util/generate_wandb_run_id.py` to generate a new id
+wandb_run_id: 75BoMFe0 # run `python util/generate_wandb_run_id.py` to generate a new id
 
 tensorboard: false
 tensorboard_dir: null
@@ -20,13 +20,19 @@ dataset: imagenet1k
 image_size: 224
 patch_size: 16
 num_labels: 1000
-hidden_size: 768
-num_hidden_layers: 12
-num_attention_heads: 12
-intermediate_size: 3072
+# hidden_size: 768
+# num_hidden_layers: 12
+# num_attention_heads: 12
+# intermediate_size: 3072
+hidden_size: 768        # Up from 198
+num_hidden_layers: 7    # Up from 6  
+num_attention_heads: 7  # Up from 6
+intermediate_size: 896 # Up from 768
 hidden_act: gelu
 initializer_range: 0.02
 layer_norm_eps: 1e-12
+
+ddp_find_unused_parameters: false
 
 # Training configuration
 total_batch_size: 512
@@ -38,6 +44,8 @@ add_bos_token: false
 global_shuffling: false
 local_shuffling: false
 tokenizer: null  # Not used for vision
+pin_memory: true  # Add this
+persistent_workers: true  # Add this
 
 model_name_or_path: null
 model_config: null
@@ -46,7 +54,7 @@ use_pretrained_weights: false
 
 # MoR Configuration
 recursive:
-  enable: true
+  enable: false
   base_depth: null
   num_recursion: 3
   sharing: middle_cycle
@@ -78,19 +86,19 @@ relaxation:
 mor:
   enable: true
   type: expert  # expert or token
-  capacity: "0.5,0.3,0.2"  # Must match num_recursion
+  capacity: "0.8,0.5,0.3"  # Must match num_recursion
   rand_router: false
   router_type: linear  # linear, mlp, wide_mlp
   z_loss: true
   z_coeff: 0.00001
   temp: 1.0
   expert:
-    cap_warmup_step: 1000
+    cap_warmup_step: 500
     router_func: sigmoid  # null, sigmoid, tanh
-    alpha: 0.1
+    alpha: 0.2
     sampling: aux_loss  # null, aux_router, aux_loss
     include_first: true 
-    coeff: 0.001
+    coeff: 0.0005
     gating: weighted  # weighted, additive
   token:
     bal_warmup_step: 0
@@ -116,19 +124,20 @@ max_grad_norm: 1.0
 # Training schedule
 num_train_steps: 100000
 stop_steps: 100000
-num_warmup_steps: 5000
+num_warmup_steps: 2500
 save_interval: 0.1
 save_steps: null
 fixed_save_steps: null
 save_total_limit: 3
 logging_steps: 100
-dataloader_num_workers: 2
-gradient_checkpointing: true
+dataloader_num_workers: 8
+gradient_checkpointing: false
+torch_empty_cache_steps: 500
 deepspeed: ds_configs/stage2.config
 
 # Evaluation
 evaluation:
-  enable: true
+  enable: false
   eval_steps: 2000
   batch_size: 64
   tasks: null  # Vision-specific evaluation
